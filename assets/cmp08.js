@@ -17,7 +17,7 @@
     var v = $('#c8-q').value.split('-'), y = +v[0], q = +v[1], m0 = 4 + (q - 1) * 3, yy = m0 > 12 ? y + 1 : y, mm = m0 > 12 ? m0 - 12 : m0;
     var pad = function (n) { return (n < 10 ? '0' : '') + n; }, end = new Date(yy, mm + 2, 0);
     var due = new Date(end.getFullYear(), end.getMonth() + 1, 18);
-    return { id: v.join('-'), from: yy + '-' + pad(mm) + '-01', to: end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate()), fy: y, label: QN[q - 1] + ' ' + y + '-' + String(y + 1).slice(2),
+    return { id: v.join('-'), late: new Date() > new Date(due.getFullYear(), due.getMonth(), due.getDate(), 23, 59), from: yy + '-' + pad(mm) + '-01', to: end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate()), fy: y, label: QN[q - 1] + ' ' + y + '-' + String(y + 1).slice(2),
       due: due.getDate() + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][due.getMonth()] + ' ' + due.getFullYear() };
   }
   function qOptions() {
@@ -59,6 +59,7 @@
       '<tr><td>' + esc(t('c8.r.int')) + '</td><td class="n">' + m(r2(intr / 2)) + '</td><td class="n">' + m(r2(intr - r2(intr / 2))) + '</td><td class="n">' + m(intr) + '</td></tr>' +
       '</tbody><tfoot><tr><td>' + esc(t('c8.r.cash')) + '</td><td class="n">' + m(r2(half + r2(rcm / 2) + r2(intr / 2))) + '</td><td class="n">' + m(r2(total - half - r2(rcm / 2) - r2(intr / 2))) + '</td><td class="n">' + m(total) + '</td></tr></tfoot></table></div>' +
       '<p class="soft">' + esc(t('c8.cash')) + '</p>' +
+      (P.late ? '<p class="callout c8-late">' + esc(t('c8.w.late', { d: P.due })) + '</p>' : '') +
       '<h3>' + esc(t('c8.h.lim')) + '</h3><div class="c8-bar" role="img" aria-label="' + esc(t('c8.used', { p: Math.round(fy / lim * 100) })) + '"><i style="width:' + Math.min(100, fy / lim * 100) + '%"></i></div>' +
       '<p>' + esc(t('c8.used2', { a: money(fy), l: money(lim), p: Math.round(fy / lim * 100) })) + '</p>' +
       (fy > lim ? '<p class="callout">' + esc(t('c8.w.over')) + '</p>' : fy > lim * 0.8 ? '<p class="callout">' + esc(t('c8.w.near')) + '</p>' : '') +
