@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://cmp08.niveshsahayak.in/sitemap.xml
