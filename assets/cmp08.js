@@ -37,7 +37,7 @@
       if (!(d.date >= P.from && d.date <= P.to)) return;
       if (sale) {
         o.tax += value(d); o.n++;   /* exempt sales can't be told apart on a bill of supply: the user moves them to the exempt box */
-      } else if (d.type === 'note' && d.kind === 'credit') o.tax -= value(d);
+      } else if (d.type === 'note' && d.kind === 'credit' && d.side !== 'purchase') o.tax -= value(d);
       else if (d.type === 'self') o.rcm += r2((d.items || []).reduce(function (a, it) { return a + num(it.qty) * num(it.rate) * num(it.gst) / 100; }, 0));
     });
     ['tax', 'ex', 'rcm', 'fy'].forEach(function (k) { o[k] = r2(o[k]); });
