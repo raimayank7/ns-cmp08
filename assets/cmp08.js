@@ -78,7 +78,6 @@
     try { localStorage.setItem('ns-c8', JSON.stringify({ biz: $('#c8-biz').value, q: $('#c8-q').value, type: $('#c8-type').value, lim: $('#c8-lim').value })); } catch (e) {}
   }
   function start() {
-    document.addEventListener('ns-lang', function () { draw(); });   /* the language pack can arrive after the first drawing */
     $('#c8-q').innerHTML = qOptions().map(function (o) { return '<option value="' + o[0] + '">' + esc(o[1]) + '</option>'; }).join('');
     var sv = {}; try { sv = JSON.parse(localStorage.getItem('ns-c8') || '{}'); } catch (e) {}
     /* default: the last finished quarter */
