@@ -50,7 +50,9 @@
     var rcm = F('c8-rcm'), intr = F('c8-int'), total = r2(tax + rcm + intr);
     var fy = F('c8-fy'), lim = ty === 'svc' ? 5000000 : num($('#c8-lim').value);
     var m = function (n) { return money(n, false); };
-    var h = '<div class="g1-print-hd"><b>' + esc(s.name || '') + '</b>' + (s.gstin ? ' · GSTIN ' + esc(s.gstin) : '') + '<br>' + esc(t('c8.for', { p: P.label })) + '</div>' +
+    /* CMP-08 is only for composition dealers: say so for a business saved as regular (round C) */
+    var h = (s.reg && s.reg !== 'comp' ? '<p class="note b1-warn">' + esc(t('c8.notcomp', { n: s.name || '' })) + '</p>' : '') +
+      '<div class="g1-print-hd"><b>' + esc(s.name || '') + '</b>' + (s.gstin ? ' · GSTIN ' + esc(s.gstin) : '') + '<br>' + esc(t('c8.for', { p: P.label })) + '</div>' +
       '<div class="g1-tiles"><div><span>' + esc(t('c8.k.base')) + '</span><b>' + m(base) + '</b></div><div><span>' + esc(t('c8.k.rate')) + '</span><b>' + T[0] + '%</b></div>' +
       '<div class="hi"><span>' + esc(t('c8.k.pay')) + '</span><b>' + m(total) + '</b></div><div><span>' + esc(t('c8.k.due')) + '</span><b>' + esc(P.due) + '</b></div></div>' +
       '<div class="g1-tw"><table class="g1-t"><thead><tr><th></th><th class="n">CGST</th><th class="n">SGST/UTGST</th><th class="n">' + esc(t('g1.total')) + '</th></tr></thead><tbody>' +
