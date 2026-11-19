@@ -31,7 +31,7 @@
   function fromBills(P) {
     var bz = $('#c8-biz').value, o = { tax: 0, ex: 0, rcm: 0, fy: 0, n: 0 };
     DOCS.forEach(function (d) {
-      if (key(d.seller && d.seller.name) !== bz) return;
+      if (key(d.seller && d.seller.name) !== bz || d.cancelled) return;
       var sale = d.type === 'invoice' || d.type === 'cashmemo', fyStart = P.fy + '-04-01', fyEnd = (P.fy + 1) + '-03-31';
       if (sale && d.date >= fyStart && d.date <= fyEnd && d.date <= P.to) o.fy += value(d);
       if (!(d.date >= P.from && d.date <= P.to)) return;
