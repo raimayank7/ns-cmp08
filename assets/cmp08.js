@@ -44,6 +44,92 @@
     return o;
   }
   function F(id) { return num($('#' + id).value); }
+  /* ---------- GSTR-4, the yearly return: the department's GSTR-4 (Annual) Offline Utility filled from the four quarters ----------
+     Table 5: the year's CMP-08 (saved workings where they were saved, else the bills); Table 6: sales at the composition rate and
+     purchases by GST rate; 4A registered suppliers, 4B registered suppliers under reverse charge, 4C unregistered suppliers
+     (self invoices = reverse charge Yes), one row per supplier, supply type and rate. 4D (import of services) and 7 left empty. */
+  function qP(fy, q) {
+    var m0 = 4 + (q - 1) * 3, yy = m0 > 12 ? fy + 1 : fy, mm = m0 > 12 ? m0 - 12 : m0, pad = function (n) { return (n < 10 ? '0' : '') + n; }, end = new Date(yy, mm + 2, 0);
+    return { id: fy + '-' + q, from: yy + '-' + pad(mm) + '-01', to: end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate()), fy: fy };
+  }
+  function year4(fy) {
+    var ty = $('#c8-type').value, T = TYPES[ty], bz = $('#c8-biz').value, Y = { val: 0, tax: 0, rcm: 0, intr: 0 };
+    for (var q = 1; q <= 4; q++) {
+      var P = qP(fy, q), sv = META[bz + '|' + P.id], v = sv ? sv.v : null, a = v ? null : fromBills(P);
+      var tx = v ? v['c8-tax'] : a.tax, ex = v ? v['c8-ex'] : a.ex, base = T[1] === 'tax' ? tx : tx + ex;
+      Y.val = r2(Y.val + tx + ex); Y.tax = r2(Y.tax + r2(base * (sv && sv.type ? TYPES[sv.type][0] : T[0]) / 100)); Y.rcm = r2(Y.rcm + (v ? v['c8-rcm'] : a.rcm)); Y.intr = r2(Y.intr + (v ? v['c8-int'] : 0));
+    }
+    /* purchases of the year: one bucket per supplier, supply type and rate, plus the rate-wise total for Table 6 */
+    var me = SELLER() || {}, ms = String(me.state || String(me.gstin || '').slice(0, 2)), from = fy + '-04-01', to = (fy + 1) + '-03-31', A = {}, R = {};
+    DOCS.forEach(function (d) {
+      if (key(d.seller && d.seller.name) !== bz || d.cancelled || d.deleted || !(d.type === 'pbill' || d.type === 'self') || d.date < from || d.date > to) return;
+      if (d.type === 'pbill' && d.kind === 'return') return;
+      var sup = d.buyer || {}, g15 = String(sup.gstin || '').trim().toUpperCase(), ss = String(sup.state || g15.slice(0, 2) || ms), inter = !!ss && !!ms && ss !== ms;
+      var tbl = d.type === 'self' ? '4C' : g15.length !== 15 ? '4C' : (d.rc || d.rcm) ? '4B' : '4A', rc = d.type === 'self' || d.rc || d.rcm ? 'Yes' : 'No';
+      (d.items || []).concat(window.NSBooks && NSBooks.chargeLines ? NSBooks.chargeLines(d) : []).forEach(function (it) {
+        var q = num(it.qty), rt = num(it.rate); if (!it.desc && !rt) return;
+        var g = gross(q, rt, it), gr = d.noGst ? 0 : num(it.gst), tx = r2(g * gr / 100), k = [tbl, g15, inter ? 1 : 0, gr, rc].join('|');
+        var b = A[k] || (A[k] = { tbl: tbl, gstin: g15, inter: inter, g: gr, rc: rc, txv: 0, tax: 0 }); b.txv = r2(b.txv + g); b.tax = r2(b.tax + tx);
+        var rr = R[gr] || (R[gr] = { txv: 0, igst: 0, cgst: 0, sgst: 0 }); rr.txv = r2(rr.txv + g); if (inter) rr.igst = r2(rr.igst + tx); else { rr.cgst = r2(rr.cgst + r2(tx / 2)); rr.sgst = r2(rr.sgst + tx - r2(tx / 2)); }
+      });
+    });
+    Y.buy = Object.keys(A).map(function (k) { return A[k]; }); Y.rates = R; Y.rate = T[0]; Y.ms = ms;
+    return Y;
+  }
+  function gross(q, rt, it) { var g = q * rt; return r2(g - g * num(it.disc) / 100); }
+  function rateOf(v) { var s = String(v == null ? '' : v).trim(); if (!s) return NaN; var n = parseFloat(s); return /%$/.test(s) ? n : n < 1 ? Math.round(n * 10000) / 100 : n; }
+  function fill4(book, fy) {
+    var need = ['Home', '4A. B2B', '4B. B2BRC', '4C. URP', '4D. IMPS', '5. CMP-08', '6. Inward outward supplies', 'master'];
+    if (need.some(function (n) { return book.sheets.indexOf(n) < 0; })) return Promise.reject(new Error('notutil'));
+    var Y = year4(fy), s = SELLER() || {}, X = NS.xlFill, POS = [];
+    var tax3 = function (b) { var ig = b.inter ? b.tax : 0, cg = b.inter ? 0 : r2(b.tax / 2); return [ig, cg, b.inter ? 0 : r2(b.tax - cg), 0]; };
+    return book.sheet('master').then(function (M) { POS = M.listUnder('POS'); }).then(function () {
+      var pos = X.posFrom(POS, String(Y.ms).padStart(2, '0') + '-'), st = function (b) { return b.inter ? 'Inter-State' : 'Intra-State'; };
+      var rows = function (t) { return Y.buy.filter(function (b) { return b.tbl === t; }); };
+      var t4a = rows('4A').map(function (b) { return ['', b.gstin, pos, st(b), b.txv, b.g].concat(tax3(b), ['Add']); });
+      var t4b = rows('4B').map(function (b) { return ['', b.gstin, pos, st(b), b.txv, b.g].concat(tax3(b), ['Add']); });
+      var t4c = rows('4C').map(function (b) { return ['', '', b.rc, pos, st(b), b.txv, b.g].concat(tax3(b), ['Add']); });
+      var half = r2(Y.tax / 2), rh = r2(Y.rcm / 2), ih = r2(Y.intr / 2);
+      return book.sheet('Home').then(function (H) { H.set('B7', String(s.gstin || '').toUpperCase()); H.set('C7', fy + '-' + String(fy + 1).slice(2)); })
+        .then(function () { return book.sheet('4A. B2B'); }).then(function (S) { S.putRows(7, t4a); })
+        .then(function () { return book.sheet('4B. B2BRC'); }).then(function (S) { S.putRows(7, t4b); })
+        .then(function () { return book.sheet('4C. URP'); }).then(function (S) { S.putRows(7, t4c); })
+        .then(function () { return book.sheet('4D. IMPS'); }).then(function (S) { S.putRows(7, []); })
+        .then(function () { return book.sheet('5. CMP-08'); }).then(function (S) {
+          var put = function (r, a) { ['D', 'E', 'F', 'G', 'H'].forEach(function (c, i) { if (a[i] !== null) S.set(c + r, a[i]); }); };
+          put(7, [Y.val, 0, half, r2(Y.tax - half), 0]); put(8, [null, 0, rh, r2(Y.rcm - rh), 0]);
+          put(9, [null, 0, r2(half + rh), r2(Y.tax - half + Y.rcm - rh), 0]); put(10, [null, 0, ih, r2(Y.intr - ih), 0]);
+        })
+        .then(function () { return book.sheet('6. Inward outward supplies'); }).then(function (S) {
+          for (var r = 7; r <= 40; r++) {
+            var ty = S.get('C' + r), rt = S.get('D' + r); if (!ty || !rt || !ty.v) continue;
+            var g = rateOf(rt.v), out = /outward/i.test(ty.v), v = null;
+            if (out && g === Y.rate) v = [Y.val, 0, half, r2(Y.tax - half), 0];
+            else if (!out && Y.rates[g]) { var x = Y.rates[g]; v = [x.txv, x.igst, x.cgst, x.sgst, 0]; }
+            ['E', 'F', 'G', 'H', 'I'].forEach(function (c, i) { S.set(c + r, v ? v[i] : ''); });
+          }
+        })
+        .then(function () { return { n: t4a.length + t4b.length + t4c.length, Y: Y }; });
+    });
+  }
+  function fill4Util(change) {
+    var s = SELLER() || {}, g = String(s.gstin || '').toUpperCase(), fy = quarter().fy, tp = null;
+    if (!/^\d{2}[A-Z0-9]{13}$/.test(g)) { NS.toast('Add the GSTIN of this business first (My data › Businesses).'); return; }
+    NS.xlFill.template('gstr4a', change).then(function (x) {
+      tp = x; if (!tp) return;
+      NS.toast('Filling ' + tp.file.name + '…');
+      return NS.xlFill.open(tp.file).then(function (book) { return fill4(book, fy).then(function (r) {
+        NS.xlFill.good('gstr4a', tp);
+        var lab = fy + '-' + String(fy + 1).slice(2), nm = g + '_GSTR4_' + lab + ' NSBiz.xlsm';
+        return book.save(nm).then(function (bl) { return NS.xlFill.toFolder(g, 'GSTR-4 ' + lab, nm, bl); }).then(function (inF) {
+          NS.toast('Saved as "' + nm + '" (year ' + lab + ': ' + r.n + ' purchase rows, CMP-08 of the four quarters).' + (inF ? ' Also saved in NSBiz › GST Returns.' : '') + ' Open it in Excel, enable macros, then use the utility\'s own buttons to check it and make the upload file.');
+        });
+      }); });
+    }).catch(function (e) {
+      var w = e && e.message; if (/^(notutil|nosheet|notxl)$/.test(w)) NS.xlFill.bad('gstr4a', tp);
+      NS.toast(w === 'notzip' ? 'Choose the zip downloaded from gst.gov.in, or the utility inside it.' : w === 'notinzip' ? 'That zip does not hold the GSTR-4 (Annual) Offline Utility. Download it from gst.gov.in › Downloads › Offline Tools › GSTR-4 Offline Tool (Annual).' : w === 'notutil' || w === 'nosheet' || w === 'notxl' ? 'That file is not the GSTR-4 (Annual) Offline Utility.' : 'Could not fill the utility: ' + (w || e), 'bad');
+    });
+  }
   function draw() {
     var P = quarter(), ty = $('#c8-type').value, T = TYPES[ty], s = SELLER() || {};
     var base = T[1] === 'tax' ? F('c8-tax') : F('c8-tax') + F('c8-ex'), tax = r2(base * T[0] / 100), half = r2(tax / 2);
@@ -125,9 +211,12 @@
     }).catch(function () { $('#c8-status').textContent = t('g1.fail'); load(); });
     root.addEventListener('change', function (e) { if (e.target.matches('#c8-biz, #c8-q')) load(); else draw(); });
     root.addEventListener('input', function (e) { if (e.target.matches('input')) draw(); });
+    var pr0 = $('[data-do="print"]', root); if (pr0 && NS.xlFill && !$('[data-do="g4"]', root)) pr0.insertAdjacentHTML('beforebegin', '<button type="button" class="btn" data-do="g4" data-ic="xls" title="The yearly return of a composition dealer: fills the official GSTR-4 (Annual) Offline Utility for the financial year of the chosen quarter">Fill GSTR-4 annual (Excel)</button><button type="button" class="btn sm" data-do="g4own" data-noic>Change template file</button>');
     root.addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
-      if (b.dataset.do === 'refill') { load(true); NS.toast(t('g3.refilled')); }
+      if (b.dataset.do === 'g4') fill4Util(false);
+      else if (b.dataset.do === 'g4own') fill4Util(true);
+      else if (b.dataset.do === 'refill') { load(true); NS.toast(t('g3.refilled')); }
       else if (b.dataset.do === 'save') { var v = {}; FIELDS.forEach(function (f) { v[f] = F(f); }); META[ident()] = { v: v, type: $('#c8-type').value, at: Date.now() }; NSStore.meta('cmp08', META).then(function () { NS.toast(t('g3.saved')); }); }
       else if (b.dataset.do === 'print') window.print();
       else if (b.dataset.do === 'share') NS.sharePdf([NS.gstForm && NS.gstForm.inApp && $('#c8-off .off-sheet') || $('#c8-out')], 'CMP-08 ' + quarter().label, 'a4', 'CMP-08 ' + quarter().label, 'CMP-08 working ' + quarter().label);
