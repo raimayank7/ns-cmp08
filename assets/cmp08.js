@@ -67,6 +67,26 @@
       (fy > lim ? '<p class="callout">' + esc(t('c8.w.over')) + '</p>' : fy > lim * 0.8 ? '<p class="callout">' + esc(t('c8.w.near')) + '</p>' : '') +
       (ty === 'trader' && F('c8-ex') ? '<p class="soft">' + esc(t('c8.w.trex')) + '</p>' : '');
     $('#c8-out').innerHTML = h;
+    var off = $('#c8-off'); if (off) off.innerHTML = official(P, s, F('c8-tax') + F('c8-ex'), tax, half, rcm, intr);
+  }
+  /* the statement as Form GST CMP-08 (rule 62 of the CGST Rules) lays it out */
+  function official(P, s, value, tax, half, rcm, intr) {
+    var G = NS.gstForm; if (!G) return '';
+    var rh = r2(rcm / 2), ih = r2(intr / 2), R = function (no, l, a) { return { cells: [no, l].concat(a) }; };
+    var y = +P.from.slice(0, 4), m = +P.from.slice(5, 7), fy = m >= 4 ? y + '-' + String(y + 1).slice(2) : (y - 1) + '-' + String(y).slice(2);
+    var h = G.head('FORM GST CMP-08', '[See rule 62]', 'Statement for payment of self-assessed tax', null, [
+      ['1.', 'GSTIN', s.gstin || ''], ['2.', '(a) Legal name', (s.gst && s.gst.legal) || s.legal || s.name || ''], ['', '(b) Trade name, if any', s.name || ''],
+      ['3.', '(a) Financial Year', fy], ['', '(b) Period (quarter)', P.label], ['', '(c) ARN', ''], ['', '(d) Date of filing', '']]);
+    var cols = ['Sr. No.', 'Description', 'Value', 'Integrated tax', 'Central tax', 'State/UT tax', 'Cess'];
+    h += G.table('4.', 'Summary of self-assessed liability (net of advances, credit and debit notes and any other adjustment due to amendments etc.)', cols, [
+      R('1', 'Outward supplies (including exempt supplies)', [value, 0, half, r2(tax - half), 0]),
+      R('2', 'Inward supplies attracting reverse charge including import of services', ['', 0, rh, r2(rcm - rh), 0]),
+      { cells: ['3', 'Tax payable (1+2)', '', 0, r2(half + rh), r2(tax - half + rcm - rh), 0], tot: 1 },
+      R('4', 'Interest payable, if any', ['', 0, ih, r2(intr - ih), 0])]);
+    h += G.table('5.', 'Tax and interest paid', ['Description', 'Integrated tax', 'Central tax', 'State/UT tax', 'Cess'], [
+      { cells: ['Tax paid in cash'].concat([0, r2(half + rh), r2(tax - half + rcm - rh), 0]) }, { cells: ['Interest paid in cash'].concat([0, ih, r2(intr - ih), 0]) }]);
+    h += G.verify() + G.note('Prepared in NSBiz from your saved bills of supply and the figures above. File it on the GST portal (Services › Returns › Statement for Composition Taxpayer, CMP-08).');
+    return G.wrap(h);
   }
   function SELLER() { var bz = $('#c8-biz').value; return BIZ.filter(function (b) { return key(b.name) === bz; })[0] || (DOCS.filter(function (d) { return key(d.seller && d.seller.name) === bz; })[0] || {}).seller; }
   function ident() { return $('#c8-biz').value + '|' + quarter().id; }
@@ -80,6 +100,11 @@
     draw();
     try { localStorage.setItem('ns-c8', JSON.stringify({ biz: $('#c8-biz').value, q: $('#c8-q').value, type: $('#c8-type').value, lim: $('#c8-lim').value })); } catch (e) {}
   }
+  (function offBox() {
+    var grid = root && $('.g3-grid', root); if (!grid || $('#c8-off')) return;
+    var d = document.createElement('section'); d.id = 'c8-off'; d.className = 'off-box'; d.setAttribute('aria-label', 'Form GST CMP-08');
+    if (NS.gstForm && NS.gstForm.inApp) { grid.parentNode.insertBefore(d, grid); NS.gstForm.fold(grid); } else grid.parentNode.insertBefore(d, grid.nextSibling);
+  })();
   function start() {
     document.addEventListener('ns-lang', function () { draw(); });   /* the language pack can arrive after the first drawing */
     $('#c8-q').innerHTML = qOptions().map(function (o) { return '<option value="' + o[0] + '">' + esc(o[1]) + '</option>'; }).join('');
@@ -105,7 +130,7 @@
       if (b.dataset.do === 'refill') { load(true); NS.toast(t('g3.refilled')); }
       else if (b.dataset.do === 'save') { var v = {}; FIELDS.forEach(function (f) { v[f] = F(f); }); META[ident()] = { v: v, type: $('#c8-type').value, at: Date.now() }; NSStore.meta('cmp08', META).then(function () { NS.toast(t('g3.saved')); }); }
       else if (b.dataset.do === 'print') window.print();
-      else if (b.dataset.do === 'share') NS.sharePdf([$('#c8-out')], 'CMP-08 ' + quarter().label, 'a4', 'CMP-08 ' + quarter().label, 'CMP-08 working ' + quarter().label);
+      else if (b.dataset.do === 'share') NS.sharePdf([NS.gstForm && NS.gstForm.inApp && $('#c8-off .off-sheet') || $('#c8-out')], 'CMP-08 ' + quarter().label, 'a4', 'CMP-08 ' + quarter().label, 'CMP-08 working ' + quarter().label);
     });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
